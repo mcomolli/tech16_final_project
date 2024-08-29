@@ -1,9 +1,7 @@
 import os
 import asyncio
-from slack_bolt import App
 from slack_bolt.async_app import AsyncApp
 from slack_sdk.errors import SlackApiError
-from slack_bolt.adapter.socket_mode import SocketModeHandler
 from slack_bolt.adapter.socket_mode.aiohttp import AsyncSocketModeHandler
 from dotenv import load_dotenv
 from openai_functions import chat
@@ -16,67 +14,6 @@ app = AsyncApp(
     token=os.environ.get("SLACK_BOT_TOKEN"),
     signing_secret=os.environ.get("SLACK_SIGNING_SECRET"),
 )
-
-# NON-ASYNC IMPLEMENTATION OF TECHNICAL_TO_BUSINESS
-# @app.shortcut("technical_to_business")
-# def open_modal(ack, shortcut, client, body):
-#     # Acknowledge the shortcut request
-#     ack()
-
-#     # Get the text from the message shortcut was activated from
-#     technical_text = body['message']['text']
-
-#     # Open a direct message conversation
-#     response = app.client.conversations_open(users="U07HY9VPHEE")
-#     channel_id = "D07HYBMAJLT"
-
-#     # Test code to identify user roles
-#     user_title = client.users_profile_get(user="U07HY9VPHEE")['profile']['title']
-
-#     # Get model's nontechnical summary:
-#     nontechnical_text = chat(f"""Someone working as a {user_title} needs to better understand the content of the following message. 
-#                                 Rewrite it according to the typical level of understanding of someone in this role. Here's the text: {technical_text}""")
-    
-#     # Get a list of topics mentioned in the message
-#     topics = chat("Return a comma-separated list of 10 or fewer topics covered in the original text. Include the topics separated by commas with no other text")
-#     topics_list = topics.split(",")
-
-#     # Generate checkboxes from topics_list
-#     checkbox_options = [{"text": {"type": "plain_text", "text": topic}, "value": topic} for topic in topics_list]
-
-#     modal_view = {
-#         "type": "modal",
-#         "callback_id": "topics_modal",
-#         "title": {"type": "plain_text", "text": "Select Topics"},
-#         "blocks": [
-#             {
-#                 "type": "input",
-#                 "block_id": "checkbox_block",
-#                 "element": {
-#                     "type": "checkboxes",
-#                     "options": checkbox_options,
-#                     "action_id": "selected_topics"
-#                 },
-#                 "label": {"type": "plain_text", "text": "Choose your topics"}
-#             }
-#         ]
-#     }
-
-#     # Open the modal
-#     client.views_open(trigger_id=body["trigger_id"], view=modal_view)
-
-#     # Post original message
-#     client.chat_postMessage(
-#         channel=channel_id,
-#         text=f"_Original message:_ " + technical_text + "/n/n"
-#     )
-#     # Post modified message
-#     client.chat_postMessage(
-#         channel=channel_id,
-#         text=f"_Summarized message for {user_title}:_ " + nontechnical_text,
-#         parse="full"
-#     )
-#     # Call the views_open method using the built-in WebClient
     
 # ASYNC IMPLEMENTATION OF TECHNICAL_TO_BUSINESS
 @app.shortcut("technical_to_business")
@@ -117,7 +54,7 @@ async def open_modal(ack, shortcut, client, body):
                                 If you use markdown, follow these guidelines: single asterisk (*) for bold, single underscore (_) for italics. Do not use double asterisks (**) or titles (#, ##, or ###).""")
     
     # Get a list of topics mentioned in the message
-    topics = chat("Return a comma-separated list of 10 or fewer topics covered in the original text. Include the topics separated by commas with no other text")
+    topics = chat("Return a comma-separated list of no more than 5 topics covered in the original text. Include the topics separated by commas with no other text. Make sure the topics are specific enough.")
     topics_list = topics.split(",")
 
     # Generate checkboxes from topics_list
@@ -153,17 +90,20 @@ async def open_modal(ack, shortcut, client, body):
     dm_response = await client.conversations_open(users="U07HY9VPHEE")
     channel_id = dm_response["channel"]["id"]
 
+    # Send original message
     await client.chat_postMessage(
         channel=channel_id,
-        text=f"_Original message:_ {technical_text}\n\n"
+        text=f"_Original message:_ {technical_text} \n \n \n --- \n \n \n"
     )
 
+    # Send message adjusted to business language
     await client.chat_postMessage(
         channel=channel_id,
-        text=f"_Summarized message for {user_title}:_ {nontechnical_text}",
+        text=f"_Summarized message for {user_title}:_ {nontechnical_text} \n \n \n --- \n \n \n",
         parse="full"
     )
 
+# Handle event: user submits topics to learn more
 @app.view("topics_modal")
 async def handle_view_submission_events(ack, body, logger, client):
     # Acknowledge the submission immediately
@@ -182,6 +122,7 @@ async def handle_view_submission_events(ack, body, logger, client):
         ]
     }
 
+    # Open modal
     response = await client.views_open(
         trigger_id=body["trigger_id"],
         view=processing_view
@@ -205,7 +146,7 @@ async def handle_view_submission_events(ack, body, logger, client):
         # Send the results back to the user
         await client.chat_postMessage(
             channel=channel_id,
-            text=f"Here is some further reading: {reading_recs}"
+            text=f"Here is some further reading: \n \n \n {reading_recs} \n \n \n --- \n \n \n"
         )
 
         # Close the "Processing..." modal
@@ -225,6 +166,7 @@ async def handle_view_submission_events(ack, body, logger, client):
             }
         )
 
+    # Handle errors in getting submission of topics to learn more
     except Exception as e:
         logger.error(f"Error in handling view submission: {e}")
         await client.views_update(

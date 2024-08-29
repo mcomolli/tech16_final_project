@@ -5,7 +5,7 @@ from llama_index.tools.duckduckgo import DuckDuckGoSearchToolSpec
 from llama_index.core.tools import FunctionTool, QueryEngineTool
 from llama_index.agent.openai import OpenAIAgent
 from llama_index.llms.openai import OpenAI
-from llama_index.readers.web import SpiderWebReader, BeautifulSoupWebReader, SimpleWebPageReader
+from llama_index.readers.web import SpiderWebReader
 from llama_index.core import VectorStoreIndex
 
 # Get environment variables
@@ -14,10 +14,7 @@ load_dotenv()
 # Get OpenAI API Key
 openai_api_key = os.environ.get("OPENAI_API_KEY")
 
-client = OpenAI(model="gpt-4o", 
-                logprobs=None,
-                default_headers={})
-
+# create a function to chat to the OpenAI Agent
 def chat(message):
 
     response = agent.chat(message)
@@ -25,11 +22,7 @@ def chat(message):
     text_only = response.response
     return text_only
 
-# define sample Tool
-def multiply(a: int, b: int) -> int:
-    """Multiple two integers and returns the result integer"""
-    return a * b
-
+# Tool used to see details of tech stack
 def check_stack():
     """Use this tool to answer questions about specific technologies"""
     tech_stack = """
@@ -70,8 +63,7 @@ def check_stack():
     """
     return tech_stack
 
-multiply_tool = FunctionTool.from_defaults(fn=multiply)
-
+# operationalize stack_tool
 stack_tool = FunctionTool.from_defaults(fn=check_stack)
 
 # initialize llm
@@ -90,18 +82,18 @@ spider_reader = SpiderWebReader(
 )
 
 urls = ["https://owasp.org/www-project-top-ten/", "https://www.vaultproject.io/docs", "https://docs.snyk.io/"]
-
 all_documents = []
-
 for url in urls:
         documents = spider_reader.load_data(url=url)
         all_documents.extend(documents)
 
-# Optionally, you can create an index from the documents
+# Create an index from the documents
 index = VectorStoreIndex.from_documents(all_documents)
 
+# Create a query engine from the index
 query_engine = index.as_query_engine()
 
+# turn the query engine into a RAG tool
 documentation_rag_tool = QueryEngineTool.from_defaults(
     query_engine, name="documentation_rag_tool", description="Useful for answering questions about OWASP, Vaultproject, and Snyk"
 )
